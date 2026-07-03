@@ -1,4 +1,4 @@
-import { Engine, PW, PH } from '../game/engine';
+import { Engine, PW, PH, ROUND_TIME } from '../game/engine';
 
 export const COL = {
   grass: '#2D6A35',
@@ -15,7 +15,7 @@ export const COL = {
 const KITS = {
   attacker: { body: '#F5C518', sleeve: '#D9A90F', num: '#241D07', skin: '#C68642' },
   defender: { body: '#E63946', sleeve: '#C22733', num: '#FFFFFF', skin: '#E8B080' },
-  gk: { body: '#8E6BE8', sleeve: '#6F4FD0', num: '#FFFFFF', skin: '#F1C27D' },
+  gk: { body: '#9E1B1B', sleeve: '#7A1212', num: '#FFFFFF', skin: '#F1C27D' },
   ref: { body: '#2B2F36', sleeve: '#20232A', num: '#F2E94E', skin: '#D9A066' },
 } as const;
 type Kit = keyof typeof KITS;
@@ -223,7 +223,7 @@ export function render(
   const res = eng.res;
   // goal-frame shake when the shot lands (offside goals go in too)
   let shake = 0;
-  if (eng.phase === 'result' && res && eng.rt >= Engine.GOAL_T) {
+  if (eng.phase === 'result' && res && !res.blocked && eng.rt >= Engine.GOAL_T) {
     const k = (eng.rt - Engine.GOAL_T) / 0.4;
     if (k < 1) shake = Math.sin(eng.rt * 70) * (1 - k) * 1.4;
   }
@@ -287,6 +287,24 @@ export function render(
   const R = eng.R;
   if (!R) return;
 
+  // ---------- the strike zone ----------
+  // The glowing band behind the defensive line where a pass will find you:
+  // past it = offside, deeper than it = blocked. Tap while you're inside.
+  if (eng.screen === 'play' && eng.phase === 'live') {
+    const lineY = eng.offsideLine();
+    ctx.fillStyle = 'rgba(245,197,24,.09)';
+    ctx.fillRect(X(0), Y(lineY), PW * s, R.reach * s);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(245,197,24,.3)';
+    ctx.lineWidth = Math.max(1, s * 0.5);
+    ctx.setLineDash([3, 4]);
+    ctx.beginPath();
+    ctx.moveTo(X(0), Y(lineY + R.reach));
+    ctx.lineTo(X(PW), Y(lineY + R.reach));
+    ctx.stroke();
+    ctx.restore();
+  }
+
   // ---------- verdict lines ----------
   if (eng.phase === 'result' && res) {
     const snap = clamp(eng.rt / 0.08, 0, 1);
@@ -345,7 +363,10 @@ export function render(
   player(R.carrier.x, R.carrier.y, 'attacker', 8, -1, 3.9, passKick);
   // beaten defenders turn and give chase until the whistle stops them
   const chasing =
-    inResult && eng.rt > Engine.PASS_T + 0.1 && (res.onside || eng.rt < eng.verdictT());
+    inResult &&
+    !res.blocked &&
+    eng.rt > Engine.PASS_T + 0.1 &&
+    (res.onside || eng.rt < eng.verdictT());
   const defFacing: 1 | -1 = chasing ? -1 : 1;
   for (const d of R.defs) player(d.x, d.y, 'defender', d.num, defFacing, 3.9);
   // the defender who set the trap appeals to the linesman
@@ -370,13 +391,19 @@ export function render(
   }
   // keeper: dives (the wrong way) once the shot is away, tipping over as he goes
   const gkRot =
-    inResult && eng.rt > Engine.SHOT_T
+    inResult && !res.blocked && eng.rt > Engine.SHOT_T
       ? Math.sign(50 - res.shotX) * Math.min((eng.rt - Engine.SHOT_T) / 0.3, 1) * 1.15
       : 0;
   player(R.gk.x, R.gk.y, 'gk', 1, 1, 4.6, 0, gkRot);
 
   // speed lines behind the striker's burst — only once he has the ball
-  if (eng.phase === 'result' && res && eng.rt > Engine.PASS_T && eng.rt < Engine.SHOT_T) {
+  if (
+    eng.phase === 'result' &&
+    res &&
+    !res.blocked &&
+    eng.rt > Engine.PASS_T &&
+    eng.rt < Engine.SHOT_T
+  ) {
     ctx.strokeStyle = 'rgba(245,197,24,.4)';
     ctx.lineWidth = Math.max(1.5, s * 0.55);
     for (const [dx, len] of [
@@ -392,7 +419,7 @@ export function render(
   }
   // you — with the boot swinging as you strike the shot
   const shotKick =
-    inResult && eng.rt >= Engine.SHOT_T
+    inResult && !res.blocked && eng.rt >= Engine.SHOT_T
       ? Math.sin(clamp((eng.rt - Engine.SHOT_T) / 0.22, 0, 1) * Math.PI)
       : 0;
   player(R.att.x, R.att.y, 'attacker', 10, -1, 3.9, shotKick);
@@ -454,8 +481,8 @@ export function render(
   // ---------- ball ----------
   if (eng.phase === 'result' && R.ball && res) {
     // airborne during the pass and during the shot; on the deck in between
-    const passing = eng.rt < Engine.PASS_T;
-    const shooting = eng.rt > Engine.SHOT_T && eng.rt < Engine.GOAL_T;
+    const passing = eng.rt < (res.blocked ? Engine.PASS_T * Engine.BLOCK_K : Engine.PASS_T);
+    const shooting = !res.blocked && eng.rt > Engine.SHOT_T && eng.rt < Engine.GOAL_T;
     if (passing || shooting) {
       for (let i = 1; i <= 3; i++) {
         const p = eng.ballPos(eng.rt - i * 0.045);
@@ -483,7 +510,7 @@ export function render(
       ctx.stroke();
     }
     // ...and again at the striker's boot when he lets fly
-    if (eng.rt >= Engine.SHOT_T && eng.rt < Engine.SHOT_T + 0.18) {
+    if (!res.blocked && eng.rt >= Engine.SHOT_T && eng.rt < Engine.SHOT_T + 0.18) {
       const k = (eng.rt - Engine.SHOT_T) / 0.18;
       const p = eng.ballPos(Engine.SHOT_T)!;
       ctx.beginPath();
@@ -493,7 +520,7 @@ export function render(
       ctx.stroke();
     }
     // net ripple when the shot lands
-    if (eng.rt >= Engine.GOAL_T) {
+    if (!res.blocked && eng.rt >= Engine.GOAL_T) {
       const k = clamp((eng.rt - Engine.GOAL_T) / 0.4, 0, 1);
       for (const m of [0, 0.5]) {
         ctx.beginPath();
@@ -506,5 +533,29 @@ export function render(
   } else {
     // at the teammate's feet, nudged toward you
     ball(R.carrier.x + 4.4, R.carrier.y - 1.6 + Math.sin(eng.t * 3) * 0.4, 0, 0);
+  }
+
+  // ---------- shot clock ----------
+  // The pass comes when this empties, wherever you're standing.
+  if (eng.screen === 'play' && eng.phase === 'live') {
+    const frac = clamp(1 - eng.t / ROUND_TIME, 0, 1);
+    const bx = X(20),
+      bw = 60 * s,
+      by = Y(144),
+      bh = Math.max(4, s * 1.7);
+    ctx.fillStyle = 'rgba(0,0,0,.3)';
+    ctx.fillRect(bx, by, bw, bh);
+    const urgent = frac < 0.3;
+    ctx.fillStyle = urgent ? COL.red : COL.gold;
+    if (urgent && Math.sin(eng.t * 14) > 0) ctx.fillStyle = '#FF7B85'; // last-second flash
+    ctx.fillRect(bx, by, bw * frac, bh);
+    label(
+      String(Math.ceil(ROUND_TIME - eng.t)),
+      X(84),
+      by + bh,
+      Math.max(12, s * 3.2),
+      urgent ? COL.red : COL.white,
+      'left',
+    );
   }
 }

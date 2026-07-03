@@ -4,12 +4,11 @@ import { ROUNDS } from '../game/engine';
 interface Props {
   score: number;
   best: number;
-  level: number; // league level after this game
-  promoted: boolean;
   onAgain: () => void;
   onMenu: () => void;
 }
 
+const GAME_URL = 'https://offside-game.vercel.app/';
 const ENGLAND_FLAG = '\u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}';
 
 function taunt(score: number): string {
@@ -19,15 +18,15 @@ function taunt(score: number): string {
   return 'Congratulations. You are VAR.';
 }
 
-export function EndScreen({ score, best, level, promoted, onAgain, onMenu }: Props) {
+export function EndScreen({ score, best, onAgain, onMenu }: Props) {
   const [copied, setCopied] = useState(false);
 
-  const shareText = `${score}/10 on Offside! ⚽ Can you do better? offsidegame.com #WorldCup`;
+  const shareText = `${score}/10 on Offside! ⚽ Can you do better? ${GAME_URL} #WorldCup`;
 
   const share = async () => {
     if (navigator.share) {
       try {
-        await navigator.share({ text: shareText, url: 'https://offsidegame.com' });
+        await navigator.share({ text: shareText, url: GAME_URL });
         return;
       } catch {
         // fall through to clipboard
@@ -52,11 +51,7 @@ export function EndScreen({ score, best, level, promoted, onAgain, onMenu }: Pro
         </span>
       </div>
       <div id="endTaunt">{taunt(score)}</div>
-      <div id="endBest">
-        {promoted
-          ? `PROMOTED — LEVEL ${level + 1}. THE LINE GETS MEANER.`
-          : `BEST: ${best}${level > 0 ? ` · LEVEL ${level + 1}` : ''}`}
-      </div>
+      <div id="endBest">BEST: {best}</div>
       <button onClick={onAgain}>PLAY AGAIN</button>
       <button className="ghost" onClick={share}>
         {copied ? 'COPIED!' : 'SHARE RESULT'}
@@ -64,7 +59,6 @@ export function EndScreen({ score, best, level, promoted, onAgain, onMenu }: Pro
       <button className="ghost dim" onClick={onMenu}>
         MENU
       </button>
-      <div className="site">OFFSIDEGAME.COM</div>
     </div>
   );
 }

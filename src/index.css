@@ -297,6 +297,23 @@ button.locked {
   line-height: 1.45;
   opacity: 0.92;
 }
+.demoRow .head {
+  display: block;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.demoRow .sub {
+  display: block;
+  font-size: 12px;
+  font-weight: 300;
+  line-height: 1.4;
+  opacity: 0.82;
+  margin-top: 3px;
+}
+.demo {
+  gap: 12px;
+}
 .demoRow b {
   font-weight: 700;
 }

@@ -1,4 +1,4 @@
-// Tiny localStorage wrapper: first-load demo, best score, league level.
+// Tiny localStorage wrapper: first-load demo + best score.
 
 export const store = {
   get seenDemo(): boolean {
@@ -12,11 +12,5 @@ export const store = {
   },
   set best(v: number) {
     localStorage.setItem('offside_best', String(v));
-  },
-  get level(): number {
-    return Number(localStorage.getItem('offside_level') ?? 0);
-  },
-  set level(v: number) {
-    localStorage.setItem('offside_level', String(v));
   },
 };
